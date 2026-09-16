@@ -2006,101 +2006,213 @@ func (l *Launcher) profileIconPNGFromModThumbnail(modID string) ([]byte, error) 
 }
 
 func (l *Launcher) showAddModDialog(onAdd func([]modmgr.ModVersion)) {
-	contentBox := container.NewVBox()
-	scroll := container.NewVScroll(contentBox)
+	// --- Local state ---
+	var mu sync.RWMutex
+	var filteredMods []*modmgr.Mod
+	var debounceTimer *time.Timer
+	var debounceMu sync.Mutex
+
+	searchQuery := ""
+	sortBy := "downloads"
+	category := ""
 
 	// Create dialog first
 	var d *dialog.CustomDialog
 
-	buildItem := func(modID, title, subtitle string, onTap func()) fyne.CanvasObject {
-		thumb := l.newModThumbnailCanvas(modID, 80, 6)
-		l.ensureModThumbnailLoaded(modID, func() {
-			l.refreshModThumbnailCanvas(thumb, modID, 80)
-		})
-		thumbBg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
-		thumbBg.CornerRadius = 6
-		thumbArea := container.NewStack(thumbBg, container.NewCenter(thumb))
-
-		titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-		titleLabel.Wrapping = fyne.TextWrapOff
-		titleLabel.Truncation = fyne.TextTruncateEllipsis
-		subtitleLabel := widget.NewLabel(subtitle)
-		subtitleLabel.Wrapping = fyne.TextWrapOff
-		subtitleLabel.Truncation = fyne.TextTruncateEllipsis
-		textContainer := container.NewVBox(titleLabel, subtitleLabel)
-
-		itemContent := container.New(layout.NewBorderLayout(nil, nil, thumbArea, nil),
-			thumbArea,
-			container.NewPadded(textContainer),
-		)
-
-		card := uicommon.NewTappableContainer(itemContent, onTap)
-		bg := canvas.NewRectangle(theme.Color(theme.ColorNameBackground))
-		bg.StrokeColor = theme.Color(theme.ColorNameButton)
-		bg.StrokeWidth = 1
-		bg.CornerRadius = theme.InputRadiusSize()
-		return container.NewStack(bg, container.NewPadded(card))
+	// --- Sort dropdown ---
+	sortOptions := []string{
+		lang.LocalizeKey("repository.sort.downloads", "Popular"),
+		lang.LocalizeKey("repository.sort.updated", "Recently Updated"),
+		lang.LocalizeKey("repository.sort.rating", "Top Rated"),
+		lang.LocalizeKey("repository.sort.name", "Name"),
 	}
+	sortKeys := []string{"downloads", "updated", "rating", "name"}
 
-	go func() {
-		modIDs, err := l.state.Rest.GetModIDs(100, "", "")
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(err, l.state.Window)
+	sortSelect := widget.NewSelect(sortOptions, nil)
+	sortSelect.SetSelectedIndex(0)
+
+	// --- Category dropdown ---
+	allCategoriesLabel := lang.LocalizeKey("repository.category.all", "All Categories")
+	catOptions := []string{allCategoriesLabel}
+	cats := l.state.Rest.GetCategories()
+	catOptions = append(catOptions, cats...)
+
+	categorySelect := widget.NewSelect(catOptions, nil)
+	categorySelect.SetSelectedIndex(0)
+
+	// --- Virtualized list ---
+	var modList *widget.List
+	modList = widget.NewList(
+		func() int {
+			mu.RLock()
+			defer mu.RUnlock()
+			return len(filteredMods)
+		},
+		func() fyne.CanvasObject {
+			// Template item
+			thumb := canvas.NewImageFromImage(placeholderModThumbnail(80))
+			thumb.FillMode = canvas.ImageFillContain
+			thumb.CornerRadius = 6
+			thumb.SetMinSize(fyne.NewSquareSize(80))
+			thumbBg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
+			thumbBg.CornerRadius = 6
+			thumbArea := container.NewStack(thumbBg, container.NewCenter(thumb))
+
+			titleLabel := widget.NewLabelWithStyle("Mod Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+			titleLabel.Wrapping = fyne.TextWrapOff
+			titleLabel.Truncation = fyne.TextTruncateEllipsis
+			subtitleLabel := widget.NewLabel("Author")
+			subtitleLabel.Wrapping = fyne.TextWrapOff
+			subtitleLabel.Truncation = fyne.TextTruncateEllipsis
+			textContainer := container.NewVBox(titleLabel, subtitleLabel)
+
+			itemContent := container.New(layout.NewBorderLayout(nil, nil, thumbArea, nil),
+				thumbArea,
+				container.NewPadded(textContainer),
+			)
+
+			card := uicommon.NewTappableContainer(itemContent, nil)
+			bg := canvas.NewRectangle(theme.Color(theme.ColorNameBackground))
+			bg.StrokeColor = theme.Color(theme.ColorNameButton)
+			bg.StrokeWidth = 1
+			bg.CornerRadius = theme.InputRadiusSize()
+			return container.NewStack(bg, container.NewPadded(card))
+		},
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			mu.RLock()
+			if id >= len(filteredMods) {
+				mu.RUnlock()
+				return
+			}
+			mod := filteredMods[id]
+			mu.RUnlock()
+
+			// Navigate the widget tree:
+			// item = Stack[bg, Padded[card]]
+			stackObjs := item.(*fyne.Container).Objects
+			padded := stackObjs[1].(*fyne.Container)
+			card := padded.Objects[0].(*uicommon.TappableContainer)
+			itemContent := card.Content.(*fyne.Container) // BorderLayout container
+
+			thumbArea := itemContent.Objects[0].(*fyne.Container)       // Stack[thumbBg, Center[thumb]]
+			centerCont := thumbArea.Objects[1].(*fyne.Container)
+			thumb := centerCont.Objects[0].(*canvas.Image)
+
+			paddedText := itemContent.Objects[1].(*fyne.Container)      // Padded[textContainer]
+			textContainer := paddedText.Objects[0].(*fyne.Container)    // VBox[titleLabel, subtitleLabel]
+
+			titleLabel := textContainer.Objects[0].(*widget.Label)
+			subtitleLabel := textContainer.Objects[1].(*widget.Label)
+
+			titleLabel.SetText(mod.Name)
+			subtitleLabel.SetText(mod.Author)
+
+			// Update thumbnail
+			thumb.Image = l.modThumbnailImage(mod.ID, 80)
+			thumb.Refresh()
+			l.ensureModThumbnailLoaded(mod.ID, func() {
+				fyne.Do(func() {
+					modList.RefreshItem(id)
+				})
 			})
+
+			// Update tap handler
+			modCopy := mod
+			card.OnTapped = func() {
+				detailsDialog := l.newModDetailsDialog(modCopy, func(v modmgr.ModVersion) {
+					onAdd([]modmgr.ModVersion{v})
+					d.Dismiss()
+				})
+				detailsDialog.Show()
+			}
+		},
+	)
+
+	// --- Refresh function ---
+	refreshFiltered := func() {
+		mu.RLock()
+		q := searchQuery
+		c := category
+		s := sortBy
+		mu.RUnlock()
+
+		mods, err := l.state.Rest.SearchMods(q, c, s)
+		if err != nil {
+			slog.Error("Failed to search mods in add mod dialog", "error", err)
 			return
 		}
-		fyne.Do(func() {
-			contentBox.Objects = nil
-			for range modIDs {
-				contentBox.Add(buildItem("", lang.LocalizeKey("profile.loading_mod", "Loading mod details..."), "", nil))
-			}
-			endLabel := widget.NewLabel(lang.LocalizeKey("common.scroll_end_reached", "Reached the bottom."))
-			endLabel.Alignment = fyne.TextAlignCenter
-			endLabel.Importance = widget.LowImportance
-			contentBox.Add(container.NewCenter(endLabel))
-			contentBox.Refresh()
-		})
 
-		for i, modID := range modIDs {
-			go func(index int, id string) {
-				mod, fetchErr := l.state.Rest.GetMod(id)
-				fyne.Do(func() {
-					if index >= len(contentBox.Objects) {
-						return
-					}
-					if fetchErr != nil || mod == nil {
-						if fetchErr != nil {
-							slog.Warn("Failed to fetch mod details", "modID", id, "error", fetchErr)
-						}
-						title := lang.LocalizeKey("profile.failed_mod", "Failed to load mod '{{.ID}}'", map[string]any{"ID": id})
-						subtitle := lang.LocalizeKey("profile.failed_mod_description", "Reopen this dialog to retry")
-						contentBox.Objects[index] = buildItem(id, title, subtitle, nil)
-						contentBox.Refresh()
-						return
-					}
+		mu.Lock()
+		filteredMods = mods
+		mu.Unlock()
 
-					contentBox.Objects[index] = buildItem(mod.ID, mod.Name, mod.Author, func() {
-						detailsDialog := l.newModDetailsDialog(mod, func(v modmgr.ModVersion) {
-							onAdd([]modmgr.ModVersion{v})
-							d.Dismiss()
-						})
-						detailsDialog.Show()
-					})
-					contentBox.Refresh()
-				})
-			}(i, modID)
+		fyne.Do(modList.Refresh)
+	}
+
+	scheduleRefresh := func() {
+		debounceMu.Lock()
+		defer debounceMu.Unlock()
+		if debounceTimer != nil {
+			debounceTimer.Stop()
 		}
-	}()
+		debounceTimer = time.AfterFunc(300*time.Millisecond, refreshFiltered)
+	}
+
+	// --- Search bar ---
+	searchBar := widget.NewEntry()
+	searchBar.SetPlaceHolder(lang.LocalizeKey("repository.search_placeholder", "Filter mods by name"))
+	searchBar.OnChanged = func(s string) {
+		mu.Lock()
+		searchQuery = s
+		mu.Unlock()
+		scheduleRefresh()
+	}
+
+	// Wire dropdown callbacks
+	sortSelect.OnChanged = func(selected string) {
+		for i, opt := range sortOptions {
+			if opt == selected {
+				mu.Lock()
+				sortBy = sortKeys[i]
+				mu.Unlock()
+				scheduleRefresh()
+				return
+			}
+		}
+	}
+
+	categorySelect.OnChanged = func(selected string) {
+		mu.Lock()
+		if selected == allCategoriesLabel {
+			category = ""
+		} else {
+			category = selected
+		}
+		mu.Unlock()
+		scheduleRefresh()
+	}
+
+	// --- Layout ---
+	toolbar := container.NewVBox(
+		searchBar,
+		container.NewGridWithColumns(2, sortSelect, categorySelect),
+	)
+	content := container.New(layout.NewBorderLayout(toolbar, nil, nil, nil),
+		toolbar,
+		modList,
+	)
 
 	d = dialog.NewCustom(
 		lang.LocalizeKey("profile.add_mod_title", "Add Mods"),
 		lang.LocalizeKey("common.cancel", "Cancel"),
-		scroll,
+		content,
 		l.state.Window,
 	)
 	d.Resize(fyne.NewSize(600, 600))
 	d.Show()
+
+	// Initial load
+	go refreshFiltered()
 }
 
 func placeholderProfileIcon(size int) image.Image {
