@@ -125,19 +125,17 @@ func (c *ThunderstoreClient) GetCategories() []string {
 
 func packageToMod(p *thunderstore.Package) *modmgr.Mod {
 	m := &modmgr.Mod{
-		ModDetails: model.ModDetails{
-			ID:             p.FullName,
-			Name:           p.Name,
-			Author:         p.Owner,
-			PackageURL:     p.PackageURL,
-			RatingScore:    p.RatingScore,
-			IsPinned:       p.IsPinned,
-			IsDeprecated:   p.IsDeprecated,
-			Categories:     p.Categories,
-			TotalDownloads: p.TotalDownloads,
-			CreatedAt:      p.DateCreated,
-			UpdatedAt:      p.DateUpdated,
-		},
+		ID:             p.FullName,
+		Name:           p.Name,
+		Author:         p.Owner,
+		PackageURL:     p.PackageURL,
+		RatingScore:    p.RatingScore,
+		IsPinned:       p.IsPinned,
+		IsDeprecated:   p.IsDeprecated,
+		Categories:     p.Categories,
+		TotalDownloads: p.TotalDownloads,
+		CreatedAt:      p.DateCreated,
+		UpdatedAt:      p.DateUpdated,
 	}
 	if len(p.Versions) > 0 {
 		m.LatestVersionID = p.Versions[0].VersionNumber
@@ -159,26 +157,24 @@ func packageVersionToModVersion(v *thunderstore.PackageVersion, modID string) *m
 	}
 
 	return &modmgr.ModVersion{
-		ModVersionDetails: model.ModVersionDetails{
-			VersionID:    v.VersionNumber,
-			ModID:        modID,
-			Dependencies: deps,
-			DownloadURL:  v.DownloadURL,
-			FileSize:     v.FileSize,
-			IconURL:      v.Icon,
-			Description:  v.Description,
-			CreatedAt:    v.DateCreated,
-			UpdatedAt:    v.DateCreated,
-			Files: []model.ModVersionFile{
-				{
-					ID:             v.UUID4,
-					Filename:       v.FullName + ".zip",
-					ContentType:    model.ContentTypeArchive,
-					Size:           v.FileSize,
-					Downloads:      []string{v.DownloadURL},
-					TargetPlatform: model.TargetPlatformAny,
-					CreatedAt:      v.DateCreated,
-				},
+		VersionID:    v.VersionNumber,
+		ModID:        modID,
+		Dependencies: deps,
+		DownloadURL:  v.DownloadURL,
+		FileSize:     v.FileSize,
+		IconURL:      v.Icon,
+		Description:  v.Description,
+		CreatedAt:    v.DateCreated,
+		UpdatedAt:    v.DateCreated,
+		Files: []model.ModVersionFile{
+			{
+				ID:             v.UUID4,
+				Filename:       v.FullName + ".zip",
+				ContentType:    model.ContentTypeArchive,
+				Size:           v.FileSize,
+				Downloads:      []string{v.DownloadURL},
+				TargetPlatform: model.TargetPlatformAny,
+				CreatedAt:      v.DateCreated,
 			},
 		},
 	}

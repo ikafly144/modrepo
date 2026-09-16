@@ -18,10 +18,10 @@ func init() {
 	}
 	fileLogger := &lumberjack.Logger{
 		Filename:   filepath.Join(configDir, "MODREPO", "app.log"), // ログファイルのパス
-		MaxSize:    10,                                                      // 1ファイルあたりの最大サイズ (MB)
-		MaxBackups: 5,                                                       // 残す古いログファイルの最大数
-		MaxAge:     30,                                                      // 古いログファイルを保持する最大日数
-		Compress:   true,                                                    // 古いログを自動でgzip圧縮するかどうか
+		MaxSize:    10,                                             // 1ファイルあたりの最大サイズ (MB)
+		MaxBackups: 5,                                              // 残す古いログファイルの最大数
+		MaxAge:     30,                                             // 古いログファイルを保持する最大日数
+		Compress:   true,                                           // 古いログを自動でgzip圧縮するかどうか
 	}
 
 	slog.SetDefault(slog.New(slog.NewMultiHandler(

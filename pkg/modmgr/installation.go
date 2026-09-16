@@ -11,28 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ikafly144/modrepo/common/rest/model"
 	"github.com/ikafly144/modrepo/pkg/progress"
 	"github.com/ikafly144/modrepo/pkg/repomgr"
 )
 
 type CacheMetadata struct {
 	ModVersion ModVersion `json:"mod_version"`
-}
-
-func fileDestinationPath(file model.ModVersionFile) string {
-	path := file.ExtractPath
-	filename := filepath.Base(file.Filename)
-	if path == "" && file.ContentType == model.ContentTypePluginDll {
-		path = filepath.Join("BepInEx", "plugins", filename)
-	}
-	if path == "" {
-		path = filename
-	}
-	if filepath.Base(path) != filename {
-		path = filepath.Join(filepath.Dir(path), filename)
-	}
-	return path
 }
 
 func DownloadMods(cacheDir string, modVersions []ModVersion, binaryType repomgr.BinaryType, progressListener progress.Progress, force bool) error {

@@ -268,4 +268,3 @@ func (s *State) UpdateProfileLaunchMetrics(profileID uuid.UUID, startedAt, ended
 	}
 	return nil
 }
-

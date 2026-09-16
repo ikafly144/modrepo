@@ -31,6 +31,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
 	"github.com/ikafly144/modrepo/client/ui/uicommon"
 	"github.com/ikafly144/modrepo/common/versioning"
 )
@@ -445,7 +446,6 @@ func (s *Settings) Tab() (*container.TabItem, error) {
 	content := container.NewBorder(nil, footer, nil, nil, pages)
 	return container.NewTabItem(lang.LocalizeKey("settings.title", "Settings"), content), nil
 }
-
 
 func (s *Settings) newOpenSourcePage() fyne.CanvasObject {
 	pageStack := container.NewStack()

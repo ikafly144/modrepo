@@ -58,7 +58,7 @@ type Repository struct {
 	thumbnailLoading    map[string]bool
 
 	// Filtered mod list (result of SearchMods)
-	dataMu   sync.RWMutex
+	dataMu       sync.RWMutex
 	filteredMods []*modmgr.Mod
 
 	// Search / filter state
@@ -76,12 +76,12 @@ type Repository struct {
 	detailView    *fyne.Container // The detail view container
 
 	// List View Elements
-	modList       *widget.List
-	searchBar     *widget.Entry
-	sortSelect    *widget.Select
+	modList        *widget.List
+	searchBar      *widget.Entry
+	sortSelect     *widget.Select
 	categorySelect *widget.Select
-	reloadBtn     *widget.Button
-	stateLabel    *widget.Label
+	reloadBtn      *widget.Button
+	stateLabel     *widget.Label
 }
 
 func NewRepository(state *uicommon.State) *Repository {
@@ -303,9 +303,9 @@ func (r *Repository) updateListItem(id widget.ListItemID, item fyne.CanvasObject
 	// Navigate the widget tree:
 	// item = Stack[bg, Padded[tappable]]
 	stackObjs := item.(*fyne.Container).Objects
-	padded := stackObjs[1].(*fyne.Container)        // Padded
+	padded := stackObjs[1].(*fyne.Container)                    // Padded
 	tappable := padded.Objects[0].(*uicommon.TappableContainer) // TappableContainer
-	contentLayout := tappable.Content.(*fyne.Container) // modListItemLayout container
+	contentLayout := tappable.Content.(*fyne.Container)         // modListItemLayout container
 
 	thumbArea := contentLayout.Objects[0].(*fyne.Container) // Stack[thumbBg, Center[thumb]]
 	centerContainer := thumbArea.Objects[1].(*fyne.Container)

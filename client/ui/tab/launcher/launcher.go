@@ -759,7 +759,6 @@ func (l *launcherListItemLayout) MinSize(objects []fyne.CanvasObject) fyne.Size 
 	return fyne.NewSize(width, height)
 }
 
-
 func (l *Launcher) setupProfileGrid() {
 	l.profileGrid = container.New(&launcherProfileGridLayout{
 		cardSize: fyne.NewSize(launcherGridCardWidth, launcherGridCardHeight),
@@ -2094,12 +2093,12 @@ func (l *Launcher) showAddModDialog(onAdd func([]modmgr.ModVersion)) {
 			card := padded.Objects[0].(*uicommon.TappableContainer)
 			itemContent := card.Content.(*fyne.Container) // BorderLayout container
 
-			thumbArea := itemContent.Objects[0].(*fyne.Container)       // Stack[thumbBg, Center[thumb]]
+			thumbArea := itemContent.Objects[0].(*fyne.Container) // Stack[thumbBg, Center[thumb]]
 			centerCont := thumbArea.Objects[1].(*fyne.Container)
 			thumb := centerCont.Objects[0].(*canvas.Image)
 
-			paddedText := itemContent.Objects[1].(*fyne.Container)      // Padded[textContainer]
-			textContainer := paddedText.Objects[0].(*fyne.Container)    // VBox[titleLabel, subtitleLabel]
+			paddedText := itemContent.Objects[1].(*fyne.Container)   // Padded[textContainer]
+			textContainer := paddedText.Objects[0].(*fyne.Container) // VBox[titleLabel, subtitleLabel]
 
 			titleLabel := textContainer.Objects[0].(*widget.Label)
 			subtitleLabel := textContainer.Objects[1].(*widget.Label)

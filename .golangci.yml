@@ -12,7 +12,7 @@ formatters:
           replacement: any
     goimports:
       local-prefixes:
-        - "github.com/ikafly144/au_mod_installer"
+        - "github.com/ikafly144/modrepo"
 
 linters:
   enable:
