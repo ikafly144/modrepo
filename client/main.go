@@ -30,7 +30,7 @@ import (
 	"github.com/ikafly144/modrepo/client/ui/uicommon"
 )
 
-const AppUserModelID = "com.github.ikafly.modrepo"
+const AppUserModelID = "com.github.ikafly144.modrepo"
 
 var pipeName = `\\.\pipe\modrepo_ipc`
 

@@ -117,10 +117,14 @@ func readPreferences() map[string]any {
 	if err != nil {
 		return nil
 	}
-	prefPath := filepath.Join(configDir, "fyne", "com.github.ikafly.modrepo", "preferences.json")
+	prefPath := filepath.Join(configDir, "fyne", "com.github.ikafly144.modrepo", "preferences.json")
 	data, err := os.ReadFile(prefPath)
 	if err != nil {
-		return nil
+		prefPath = filepath.Join(configDir, "fyne", "com.github.ikafly.modrepo", "preferences.json")
+		data, err = os.ReadFile(prefPath)
+		if err != nil {
+			return nil
+		}
 	}
 	var prefs map[string]any
 	if err := json.Unmarshal(data, &prefs); err != nil {
@@ -199,7 +203,7 @@ func maybeRelaunchFromTemp(targetFlag string) {
 		return
 	}
 
-	dir, err := os.MkdirTemp("", "modofus-updater-*")
+	dir, err := os.MkdirTemp("", "modrepo-updater-*")
 	if err != nil {
 		slog.Warn("Failed to create temp directory for updater, running in place", "error", err)
 		return

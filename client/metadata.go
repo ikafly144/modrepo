@@ -40,7 +40,7 @@ func init() {
 	}
 
 	app.SetMetadata(fyne.AppMetadata{
-		ID:      "com.github.ikafly.modrepo",
+		ID:      "com.github.ikafly144.modrepo",
 		Name:    "MODREPO",
 		Version: version,
 		Build:   1,

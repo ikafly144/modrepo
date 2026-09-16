@@ -1,7 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
   xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
   xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
-  <Package Name="!(loc.ProductName)" Language="1041" Version="$(var.ProductVersion)" Manufacturer="!(loc.ManufacturerName)" UpgradeCode="{3C7B19C3-5A2D-4C4E-8B71-88D8F8DE18B2}" Scope="perUser">
+  <Package Name="!(loc.ProductName)" Language="1041" Version="$(var.ProductVersion)" Manufacturer="!(loc.ManufacturerName)" UpgradeCode="{D7E037E3-7C1F-407D-A18F-F0AFB3FF2224}" Scope="perUser">
     <Icon Id="AppIconIco" SourceFile="$(var.SourceDir)\\app.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIconIco" />
 
@@ -38,22 +38,22 @@
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="!(loc.InstallFolder)">
-        <Component Id="MainExe" Guid="{B2D5A99B-0D56-40C8-94B3-8FB3A8A6D7E4}">
+        <Component Id="MainExe" Guid="{7DB6E67C-DD45-4828-BD02-E04BD4806572}">
           <File Id="ModRepoExe" Source="$(var.SourceDir)\\MODREPO.exe" KeyPath="yes" />
         </Component>
-        <Component Id="UpdaterExe" Guid="{D6B8F77E-976E-4E7B-A48E-506B8F12C9A1}">
+        <Component Id="UpdaterExe" Guid="{5A4D53E6-2584-413C-8ACF-C5DCD824273A}">
           <File Id="UpdaterExeFile" Source="$(var.SourceDir)\\updater.exe" KeyPath="yes" />
         </Component>
-        <Component Id="AppIconFile" Guid="{C7A2E991-8D9E-4F90-A821-4B9F1E2A3C4D}">
+        <Component Id="AppIconFile" Guid="{0960932F-8DD3-4217-B1C2-96F4A2431864}">
           <File Id="AppIconIco" Source="$(var.SourceDir)\\app.ico" KeyPath="yes" />
         </Component>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ProgramMenuDir" Name="!(loc.InstallFolder)">
-        <Component Id="StartMenuShortcut" Guid="{E2EF6B58-4FD5-46E0-9C4A-C0B1E2C4C2B1}">
+        <Component Id="StartMenuShortcut" Guid="{4EE1A707-9A7A-4231-8488-E57CAAADE1E2}">
           <Shortcut Id="StartMenuShortcut" Name="!(loc.ShortcutName)" Target="[INSTALLFOLDER]updater.exe" Arguments="-target &quot;[INSTALLFOLDER]MODREPO.exe&quot;" WorkingDirectory="INSTALLFOLDER">
-            <ShortcutProperty Key="System.AppUserModel.ID" Value="com.github.ikafly.modrepo" />
+            <ShortcutProperty Key="System.AppUserModel.ID" Value="com.github.ikafly144.modrepo" />
           </Shortcut>
           <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" />
           <RegistryValue Root="HKCU" Key="Software\\ikafly144\\MODREPO" Name="installed" Type="integer" Value="1" KeyPath="yes" />
