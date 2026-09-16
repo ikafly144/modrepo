@@ -36,13 +36,11 @@ func LaunchRepo(gameDir string, dllDir string, onStarted func(pid int) error, ar
 			_ = windows.SetDllDirectory("")
 		}()
 
-		// Unity Mono Doorstop target assembly
-		targetAssembly := filepath.Join(dllDir, "BepInEx", "core", "BepInEx.Preloader.dll")
-
-		finalArgs = append(finalArgs,
-			"--doorstop-enabled", "true",
-			"--doorstop-target-assembly", targetAssembly,
-		)
+		doorstopArgs, err := BuildDoorstopArgs(dllDir)
+		if err != nil {
+			return fmt.Errorf("failed to build doorstop arguments: %w", err)
+		}
+		finalArgs = append(finalArgs, doorstopArgs...)
 	}
 
 	cmd := exec.Command(exePath, finalArgs...)

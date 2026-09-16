@@ -174,21 +174,5 @@ func PrepareProfileDirectory(profileDir string, gamePath string, cacheDir string
 }
 
 func GenerateDoorstopConfig(basePath string) string {
-	targetAssembly := filepath.Join(basePath, "BepInEx", "core", "BepInEx.Preloader.dll")
-
-	return fmt.Sprintf(`# General options for Unity Doorstop
-[General]
-enabled = true
-target_assembly = %s
-redirect_output_log = false
-boot_config_override =
-ignore_disable_switch = false
-
-[UnityMono]
-dll_search_path_override =
-debug_enabled = false
-debug_start_server = true
-debug_address = 127.0.0.1:10000
-debug_suspend = false
-`, targetAssembly)
+	return repomgr.GenerateDoorstopConfig(basePath)
 }
