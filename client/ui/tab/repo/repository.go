@@ -325,6 +325,7 @@ func (r *Repository) updateListItem(id widget.ListItemID, item fyne.CanvasObject
 	titleLabel.SetText(mod.Name)
 	authorLabel.SetText(mod.Author)
 	descriptionLabel.SetText(repositoryListSummary(mod.Description, 120))
+	descriptionLabel.Wrapping = fyne.TextWrapWord
 
 	// Update thumbnail
 	thumb.Image = r.modThumbnailImage(mod.ID, int(repositoryThumbSize))
@@ -388,8 +389,10 @@ func (r *Repository) showModDetails(mod *modmgr.Mod) {
 	)
 
 	// Tabs
+	desc := widget.NewLabel(mod.Description)
+	desc.Wrapping = fyne.TextWrapWord
 	detailsTab := container.NewTabItem(lang.LocalizeKey("repository.tab.details", "Details"),
-		container.NewVScroll(widget.NewLabel(mod.Description)),
+		container.NewVScroll(desc),
 	)
 
 	versionsList := container.NewVBox()

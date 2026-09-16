@@ -2435,6 +2435,7 @@ func (l *Launcher) newModDetailsDialog(mod *modmgr.Mod, onSelect func(modmgr.Mod
 	)
 
 	description := widget.NewRichTextFromMarkdown(mod.Description)
+	description.Wrapping = fyne.TextWrapWord
 	content := container.NewBorder(description,
 		loading, nil, nil,
 		description,
