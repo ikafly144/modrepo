@@ -9,6 +9,76 @@ import (
 	"strings"
 )
 
+// ReadReleaseVersion reads the game version from a MonoBehaviour ScriptableObject named "Version - RELEASE"
+// within the specified assets file (e.g. sharedassets0.assets).
+func ReadReleaseVersion(sharedAssetsPath string) (string, error) {
+	f, err := os.Open(sharedAssetsPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	reader := NewAssetsFileReader(f)
+	assetsFile, err := ReadAssetsFile(reader)
+	if err != nil {
+		return "", fmt.Errorf("failed to read assets file: %w", err)
+	}
+
+	const targetObjectName = "Version - RELEASE"
+
+	for i := range assetsFile.Metadata.AssetInfos {
+		info := &assetsFile.Metadata.AssetInfos[i]
+		if info.TypeID != int32(ClassIDMonoBehaviour) {
+			continue
+		}
+
+		// MonoBehaviour header is at least 28 bytes:
+		// m_GameObject (12), m_Enabled (4), m_Script (12)
+		// followed by m_Name length (4) + string
+		if info.ByteSize < 32 {
+			continue
+		}
+
+		data, err := readAssetData(reader, assetsFile, info)
+		if err != nil {
+			continue
+		}
+
+		if len(data) < 32 {
+			continue
+		}
+
+		nameLen := int(binary.LittleEndian.Uint32(data[28:32]))
+		if nameLen <= 0 || 32+nameLen > len(data) {
+			continue
+		}
+
+		name := string(data[32 : 32+nameLen])
+		if name != targetObjectName {
+			continue
+		}
+
+		pos := 32 + nameLen
+		if pos%4 != 0 {
+			pos += 4 - (pos % 4)
+		}
+
+		if pos+4 > len(data) {
+			return "", fmt.Errorf("truncated data for version field in %s", targetObjectName)
+		}
+
+		vLen := int(binary.LittleEndian.Uint32(data[pos : pos+4]))
+		if vLen <= 0 || pos+4+vLen > len(data) {
+			return "", fmt.Errorf("invalid version string length in %s", targetObjectName)
+		}
+
+		version := string(data[pos+4 : pos+4+vLen])
+		return version, nil
+	}
+
+	return "", fmt.Errorf("version object %q not found in %s", targetObjectName, sharedAssetsPath)
+}
+
 func ReadPlayerSettingsBundleVersion(globalGameManagersPath string) (string, error) {
 	f, err := os.Open(globalGameManagersPath)
 	if err != nil {
