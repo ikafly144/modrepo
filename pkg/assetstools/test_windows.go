@@ -3,34 +3,27 @@
 package assetstools
 
 import (
-	"os"
-	"path/filepath"
+	"fmt"
+	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
 
-func getRepoDirForTest() (string, error) {
-	// 1. Try registry
-	if key, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 3241660`, registry.QUERY_VALUE); err == nil {
-		defer key.Close()
-		if val, _, err := key.GetStringValue("InstallLocation"); err == nil && val != "" {
-			if _, err := os.Stat(filepath.Join(val, "REPO_Data", "globalgamemanagers")); err == nil {
-				return val, nil
-			}
-		}
+func getAmongUsDir() (string, error) {
+	key, err := registry.OpenKey(registry.CURRENT_USER, "SOFTWARE\\Classes\\amongus\\shell\\open\\command", registry.QUERY_VALUE)
+	if err != nil {
+		return "", err
 	}
+	defer key.Close()
 
-	// 2. Common Steam paths
-	candidates := []string{
-		`C:\Program Files (x86)\Steam\steamapps\common\REPO`,
-		`C:\Program Files\Steam\steamapps\common\REPO`,
-		`D:\SteamLibrary\steamapps\common\REPO`,
+	val, _, err := key.GetStringValue("")
+	if err != nil {
+		return "", err
 	}
-	for _, c := range candidates {
-		if _, err := os.Stat(filepath.Join(c, "REPO_Data", "globalgamemanagers")); err == nil {
-			return c, nil
-		}
+	val = strings.Trim(strings.TrimSpace(val[0:len(val)-4]), "\"")
+	val, ok := strings.CutSuffix(val, "Among Us_Data\\Resources\\AmongUsHelper.exe")
+	if !ok {
+		return "", fmt.Errorf("among Us Helper is not supported %s", val)
 	}
-
-	return "", os.ErrNotExist
+	return val, nil
 }
