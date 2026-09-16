@@ -102,29 +102,44 @@ func readAssetData(reader *AssetsFileReader, file *AssetsFile, info *AssetFileIn
 	return reader.ReadBytes(int(info.ByteSize))
 }
 
-var bundleVersionPattern = regexp.MustCompile(`\b\d{4}\.\d+\.\d+\b`)
+var bundleVersionPattern = regexp.MustCompile(`^v?\d+(\.\d+)+([a-zA-Z0-9_\-\.]*)?$`)
+
+var nonVersionStrings = map[string]bool{
+	"public.app-category.games": true,
+	"semiwork":                  true,
+	"REPO":                      true,
+	"Very Low":                  true,
+	"Low":                       true,
+	"Medium":                    true,
+	"High":                      true,
+	"Very High":                 true,
+	"Ultra":                     true,
+}
+
+type versionCandidate struct {
+	offset int
+	value  string
+}
 
 func extractBundleVersionFromSerializedData(data []byte) (string, error) {
-	candidates := make([]string, 0)
-	seen := map[string]struct{}{}
+	var candidates []versionCandidate
 
-	for i := 0; i+4 <= len(data); i++ {
+	// 1. Length-prefixed string extraction (standard Unity string serialization)
+	for i := 0; i+4 <= len(data); i += 4 {
 		n := int(int32(binary.LittleEndian.Uint32(data[i : i+4])))
-		if n < 6 || n > 128 || i+4+n > len(data) {
+		if n < 1 || n > 64 || i+4+n > len(data) {
 			continue
 		}
 		value := string(data[i+4 : i+4+n])
-		if !isPrintableASCII(value) || !bundleVersionPattern.MatchString(value) {
+		if !isPrintableASCII(value) || nonVersionStrings[value] || !bundleVersionPattern.MatchString(value) {
 			continue
 		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		candidates = append(candidates, value)
+		candidates = append(candidates, versionCandidate{offset: i, value: value})
 	}
 
+	// 2. Fallback: scan for contiguous ASCII strings matching versionPattern
 	if len(candidates) == 0 {
+		seen := map[string]struct{}{}
 		for i := 0; i < len(data); {
 			if data[i] < 32 || data[i] > 126 {
 				i++
@@ -135,10 +150,10 @@ func extractBundleVersionFromSerializedData(data []byte) (string, error) {
 				i++
 			}
 			value := string(data[start:i])
-			if bundleVersionPattern.MatchString(value) {
+			if !nonVersionStrings[value] && bundleVersionPattern.MatchString(value) {
 				if _, ok := seen[value]; !ok {
 					seen[value] = struct{}{}
-					candidates = append(candidates, value)
+					candidates = append(candidates, versionCandidate{offset: start, value: value})
 				}
 			}
 		}
@@ -147,7 +162,12 @@ func extractBundleVersionFromSerializedData(data []byte) (string, error) {
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("version-like string was not found")
 	}
-	return pickLatestVersion(candidates)
+
+	// In Unity PlayerSettings (especially 2022.3+), multiple version strings may appear in sequence
+	// (e.g. visionOSBundleVersion, tvOSBundleVersion, bundleVersion).
+	// bundleVersion is placed immediately before preloadedAssets, which makes it the last version string
+	// in that cluster. Therefore, the last candidate represents the primary bundleVersion.
+	return candidates[len(candidates)-1].value, nil
 }
 
 func isPrintableASCII(s string) bool {
@@ -156,12 +176,12 @@ func isPrintableASCII(s string) bool {
 			return false
 		}
 	}
-	return true
+	return len(s) > 0
 }
 
 func pickLatestVersion(candidates []string) (string, error) {
 	best := ""
-	var bestCore [3]int
+	var bestCore []int
 	for _, candidate := range candidates {
 		core, ok := parseVersionCore(candidate)
 		if !ok {
@@ -178,32 +198,42 @@ func pickLatestVersion(candidates []string) (string, error) {
 	return best, nil
 }
 
-func parseVersionCore(version string) ([3]int, bool) {
+func parseVersionCore(version string) ([]int, bool) {
+	version = strings.TrimPrefix(version, "v")
+	// Strip prerelease metadata (e.g. -beta.1)
+	if idx := strings.IndexAny(version, "-+"); idx != -1 {
+		version = version[:idx]
+	}
 	parts := strings.Split(version, ".")
-	if len(parts) < 3 {
-		return [3]int{}, false
+	if len(parts) < 2 {
+		return nil, false
 	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return [3]int{}, false
+	var nums []int
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, false
+		}
+		nums = append(nums, n)
 	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return [3]int{}, false
-	}
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return [3]int{}, false
-	}
-	return [3]int{major, minor, patch}, true
+	return nums, true
 }
 
-func compareVersionCore(a, b [3]int) int {
-	for i := range 3 {
-		if a[i] > b[i] {
+func compareVersionCore(a, b []int) int {
+	maxLen := max(len(a), len(b))
+	for i := 0; i < maxLen; i++ {
+		valA := 0
+		if i < len(a) {
+			valA = a[i]
+		}
+		valB := 0
+		if i < len(b) {
+			valB = b[i]
+		}
+		if valA > valB {
 			return 1
 		}
-		if a[i] < b[i] {
+		if valA < valB {
 			return -1
 		}
 	}
