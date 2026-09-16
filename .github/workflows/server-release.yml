@@ -20,6 +20,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Images (${{ matrix.name }})
     runs-on: ubuntu-latest
+    if: hashFiles('server/Dockerfile') != ''
     permissions:
       contents: read
       packages: write

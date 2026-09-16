@@ -141,7 +141,7 @@ func main() {
 	}
 	document := LicensesDocument{
 		Project: ProjectLicense{
-			LicenseURL:  "https://github.com/ikafly144/au_mod_installer/blob/master/LICENSE",
+			LicenseURL:  "https://github.com/ikafly144/modrepo/blob/master/LICENSE",
 			LicenseName: "GPL-3.0",
 			LicenseText: strings.TrimSpace(string(projectLicenseTextBytes)),
 		},

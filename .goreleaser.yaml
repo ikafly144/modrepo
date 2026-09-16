@@ -8,7 +8,7 @@
 
 version: 2
 
-project_name: mod-of-us
+project_name: modrepo
 
 snapshot:
   version_template: '{{ .Version }}-dev{{ if ne (indexOrDefault .Env "GITHUB_RUN_NUMBER" "false") "false" }}.{{ .Env.GITHUB_RUN_NUMBER }}{{ end }}+{{ .Branch }}-{{ .ShortCommit }}'
@@ -55,7 +55,7 @@ builds:
     flags:
       - -trimpath
       - -v
-    binary: Mod of Us
+    binary: MODREPO
     mod_timestamp: "{{ .CommitTimestamp }}"
     hooks:
       post:
@@ -117,10 +117,10 @@ release:
   footer: |
     ---
 
-    ## [インストーラーをダウンロード](https://github.com/ikafly144/au_mod_installer/releases/download/{{ .Tag }}/mod-of-us_windows_x86_64.msi)
-    ## [Download the Installer](https://github.com/ikafly144/au_mod_installer/releases/download/{{ .Tag }}/mod-of-us_windows_x86_64.msi)
+    ## [インストーラーをダウンロード](https://github.com/ikafly144/modrepo/releases/download/{{ .Tag }}/modrepo_windows_x86_64.msi)
+    ## [Download the Installer](https://github.com/ikafly144/modrepo/releases/download/{{ .Tag }}/modrepo_windows_x86_64.msi)
   github:
-    name: au_mod_installer
+    name: modrepo
     owner: ikafly144
   extra_files:
     - glob: dist/*.msi

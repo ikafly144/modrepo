@@ -21,8 +21,6 @@ on:
 
 permissions:
   contents: read
-  # Optional: allow read access to pull requests. Use with `only-new-issues` option.
-  # pull-requests: read
 
 jobs:
   golangci:
@@ -35,27 +33,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.MUS_LIBS_PAT }}
-          submodules: recursive
-          persist-credentials: false
-      - name: Stage Discord SDK DLL
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path lib | Out-Null
-          $dlls = @(Get-ChildItem -Path mus-libs -Recurse -Filter "discord_partner_sdk.dll" -File)
-          if ($dlls.Count -eq 0) {
-            Write-Error "discord_partner_sdk.dll not found in mus-libs"
-            exit 1
-          }
-          if ($dlls.Count -ne 1) {
-            Write-Error "multiple discord_partner_sdk.dll files found; please ensure exactly one match:"
-            $dlls | ForEach-Object { $_.FullName }
-            exit 1
-          }
-          Copy-Item -Path $dlls[0].FullName -Destination "lib\discord_partner_sdk.dll" -Force
-          Copy-Item -Path $dlls[0].FullName -Destination "discord_partner_sdk.dll" -Force
-          $libPath = (Get-Item "lib").FullName
-          Add-Content -Path $env:GITHUB_PATH -Value $libPath
       - name: Cache golangci-lint cache
         id: cache-golangci-lint
         env:
@@ -75,34 +52,17 @@ jobs:
         run: go generate ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+
   test:
     name: test
     runs-on: windows-latest
     steps:
+      - name: Configure Git
+        run: |
+          git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.MUS_LIBS_PAT }}
-          submodules: recursive
-          persist-credentials: false
-      - name: Stage Discord SDK DLL
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path lib | Out-Null
-          $dlls = @(Get-ChildItem -Path mus-libs -Recurse -Filter "discord_partner_sdk.dll" -File)
-          if ($dlls.Count -eq 0) {
-            Write-Error "discord_partner_sdk.dll not found in mus-libs"
-            exit 1
-          }
-          if ($dlls.Count -ne 1) {
-            Write-Error "multiple discord_partner_sdk.dll files found; please ensure exactly one match:"
-            $dlls | ForEach-Object { $_.FullName }
-            exit 1
-          }
-          Copy-Item -Path $dlls[0].FullName -Destination "lib\discord_partner_sdk.dll" -Force
-          Copy-Item -Path $dlls[0].FullName -Destination "discord_partner_sdk.dll" -Force
-          $libPath = (Get-Item "lib").FullName
-          Add-Content -Path $env:GITHUB_PATH -Value $libPath
       - name: Cache Go modules
         id: cache-go-mod
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -110,8 +70,8 @@ jobs:
           cache-name: cache-go-mod
         with:
           path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
+            ~\AppData\Local\go-build
+            ~\go\pkg\mod
           key: ${{ runner.os }}-go-${{ env.cache-name }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-${{ env.cache-name }}-
@@ -123,4 +83,4 @@ jobs:
       - name: Run tests
         run: |
           go generate ./...
-          go test ./... -v -
+          go test ./... -v

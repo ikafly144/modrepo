@@ -43,7 +43,7 @@ func setupSystemTray(w fyne.Window, state *uicommon.State, onQuit func()) {
 		fyne.CurrentApp().Quit()
 	})
 
-	menu := fyne.NewMenu(lang.LocalizeKey("app.name", "Mod of Us"), showItem, fyne.NewMenuItemSeparator(), quitItem)
+	menu := fyne.NewMenu(lang.LocalizeKey("app.name", "MODREPO"), showItem, fyne.NewMenuItemSeparator(), quitItem)
 	desk.SetSystemTrayMenu(menu)
 
 	if icon := fyne.CurrentApp().Metadata().Icon; icon != nil {

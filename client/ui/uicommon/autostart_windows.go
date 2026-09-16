@@ -15,7 +15,7 @@ import (
 
 const (
 	startupRegistryPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-	startupValueName    = "Mod of Us"
+	startupValueName    = "MODREPO"
 )
 
 // IsAutoStartEnabled checks if the application is set to launch on Windows startup.

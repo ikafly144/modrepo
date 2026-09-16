@@ -2,9 +2,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
     [string]$DistDir = "dist",
-    [string]$BuildDirName = "mod-of-us_windows_x86_64",
-    [string]$BinaryName = "Mod of Us.exe",
-    [string]$OutputName = "mod-of-us_windows_x86_64.msi"
+    [string]$BuildDirName = "modrepo_windows_x86_64",
+    [string]$BinaryName = "MODREPO.exe",
+    [string]$OutputName = "modrepo_windows_x86_64.msi"
 )
 
 Set-StrictMode -Version Latest
@@ -64,9 +64,6 @@ if (-not (Test-Path $exePath)) {
 if (-not (Test-Path $exePath)) {
     throw "Executable not found: $exePath"
 }
-if (-not (Test-Path $dllPath)) {
-    throw "Discord SDK DLL not found: $dllPath"
-}
 if (-not (Test-Path $iconPath)) {
     throw "Icon not found: $iconPath"
 }
@@ -80,7 +77,9 @@ if (Test-Path $stagePath) {
 New-Item -Path $stagePath -ItemType Directory | Out-Null
 
 Copy-Item -Path $exePath -Destination $stagePath -Force
-Copy-Item -Path $dllPath -Destination $stagePath -Force
+if (Test-Path $dllPath) {
+    Copy-Item -Path $dllPath -Destination $stagePath -Force
+}
 
 $updaterPath = Join-Path $buildPath "updater.exe"
 if (-not (Test-Path $updaterPath)) {
@@ -181,10 +180,10 @@ Write-Host "MSI generated: $outputPath"
 # Build the bootstrapper
 Write-Host "Building bootstrapper..."
 $bootstrapperSource = Join-Path $repoRoot "cmd\bootstrapper"
-$embeddedMsiPath = Join-Path $bootstrapperSource "mod-of-us.msi"
+$embeddedMsiPath = Join-Path $bootstrapperSource "modrepo.msi"
 Copy-Item -Path $outputPath -Destination $embeddedMsiPath -Force
 
-$bootstrapperOutName = "mod-of-us_windows_x86_64.exe"
+$bootstrapperOutName = "modrepo_windows_x86_64.exe"
 $bootstrapperOutPath = Join-Path $distPath $bootstrapperOutName
 
 Push-Location $bootstrapperSource

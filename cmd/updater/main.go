@@ -175,7 +175,7 @@ func resolveTargetPath(targetFlag string) string {
 		return targetFlag
 	}
 
-	mainExe := filepath.Join(dir, "Mod of Us.exe")
+	mainExe := filepath.Join(dir, "MODREPO.exe")
 	if _, err := os.Stat(mainExe); os.IsNotExist(err) {
 		mainExe = filepath.Join(dir, "client.exe")
 	}

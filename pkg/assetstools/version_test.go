@@ -2,23 +2,25 @@
 
 package assetstools
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
-func TestReadPlayerSettingsBundleVersion(t *testing.T) {
-	gamePath, err := getAmongUsDir()
-	if err != nil {
-		t.Skipf("skipping: failed to locate Among Us directory: %v", err)
-	}
-	path := gamePath + "Among Us_Data\\globalgamemanagers"
+func TestExtractBundleVersionFromSerializedData(t *testing.T) {
+	// Synthesize serialized data with a length-prefixed version string matching \b\d{4}\.\d+\.\d+\b
+	version := "2026.8.18"
+	data := make([]byte, 100)
+	binary.LittleEndian.PutUint32(data[10:14], uint32(len(version)))
+	copy(data[14:], version)
 
-	version, err := ReadPlayerSettingsBundleVersion(path)
+	got, err := extractBundleVersionFromSerializedData(data)
 	if err != nil {
-		t.Fatalf("failed to read version: %v", err)
+		t.Fatalf("failed to extract bundle version: %v", err)
 	}
-	if version == "" {
-		t.Fatal("version must not be empty")
+	if got != version {
+		t.Fatalf("expected %q, got %q", version, got)
 	}
-	t.Logf("version: %s", version)
 }
 
 func TestReadReleaseVersion(t *testing.T) {
@@ -37,4 +39,3 @@ func TestReadReleaseVersion(t *testing.T) {
 	}
 	t.Logf("release version: %s", version)
 }
-

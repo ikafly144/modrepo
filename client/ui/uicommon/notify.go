@@ -10,7 +10,7 @@ import (
 	"git.sr.ht/~jackmordaunt/go-toast/v2"
 )
 
-const AppName = "Mod of Us"
+const AppName = "MODREPO"
 
 //go:embed icon.png
 var appIconBytes []byte
@@ -26,7 +26,7 @@ func getAppIconPath() string {
 			return
 		}
 		tmpDir := os.TempDir()
-		iconFile := filepath.Join(tmpDir, "mod_of_us_icon.png")
+		iconFile := filepath.Join(tmpDir, "modrepo_icon.png")
 		if err := os.WriteFile(iconFile, appIconBytes, 0644); err != nil {
 			slog.Debug("Failed to write temporary icon for notifications", "error", err)
 			return

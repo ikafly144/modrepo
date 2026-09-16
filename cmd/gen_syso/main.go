@@ -51,20 +51,36 @@ func versionStrToNum(versionString string) ([]int, error) {
 }
 
 func getVersionData() (string, []int, error) {
-	bin, err := exec.Command("git", "describe", "--tags").Output()
-	if err != nil {
-		return "", nil, fmt.Errorf("could not get version string from git (%w)", err)
+	if envVer := os.Getenv("VERSION"); envVer != "" {
+		if !strings.HasPrefix(envVer, "v") {
+			envVer = "v" + envVer
+		}
+		num, err := versionStrToNum(envVer)
+		if err == nil {
+			return envVer, num, nil
+		}
 	}
-	str := strings.TrimSpace(string(bin))
-	num, err := versionStrToNum(str)
-	return str, num, err
+
+	bin, err := exec.Command("git", "describe", "--tags").Output()
+	if err == nil {
+		str := strings.TrimSpace(string(bin))
+		num, err := versionStrToNum(str)
+		if err == nil {
+			return str, num, nil
+		}
+	}
+
+	// Fallback when no tags exist in the git repository (e.g. fresh repo, dev branch)
+	str := "v0.0.1-dev"
+	num, _ := versionStrToNum(str)
+	return str, num, nil
 }
 
 var (
 	iconFlag     = flag.String("icon", "icon.ico", "Path to the icon file")
 	archFlag     = flag.String("arch", "64", "Architecture (32 or 64)")
 	manifestFlag = flag.String("manifest", "app.exe.manifest", "Path to the manifest file")
-	outputFlag   = flag.String("o", "mod-of-us.syso", "Output .syso file path")
+	outputFlag   = flag.String("o", "modrepo.syso", "Output .syso file path")
 )
 
 func main() {
@@ -98,12 +114,12 @@ func main() {
 		},
 		StringFileInfo: goversioninfo.StringFileInfo{
 			CompanyName:      "ikafly144",
-			FileDescription:  "Mod of Us - Among Us Mod Manager",
-			FileVersion:      fileVerStr,
+			FileDescription:  "MODREPO - R.E.P.O. Mod Manager",
+			FileVersion:      strings.TrimPrefix(fileVerStr, "v"),
 			LegalCopyright:   "Copyright (C) 2026 ikafly144.",
-			OriginalFilename: "MOD-OF-US.EXE",
-			ProductName:      "Mod of Us",
-			ProductVersion:   fileVerStr,
+			OriginalFilename: "MODREPO.EXE",
+			ProductName:      "MODREPO",
+			ProductVersion:   strings.TrimPrefix(fileVerStr, "v"),
 		},
 		LangID:    goversioninfo.LngJapanese,
 		CharsetID: goversioninfo.CsMultilingual,
