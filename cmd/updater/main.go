@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -14,17 +15,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/mod/semver"
 	"golang.org/x/sys/windows"
 
 	"github.com/nightlyone/lockfile"
 
-	"github.com/ikafly144/modrepo/client/rest"
 	"github.com/ikafly144/modrepo/common/versioning"
 )
-
-var defaultServer = "https://thunderstore.io/c/repo/"
 
 func isMainAppRunning() bool {
 	pd, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
@@ -74,42 +73,74 @@ func main() {
 	branchName := readUpdateBranchPreference()
 	branch := versioning.BranchFromString(branchName)
 
-	serverURL := serverFlag
-	if serverURL == "" {
-		serverURL = defaultServer
-	}
-
-	currentVersion := readCurrentVersion()
+	targetExe := resolveTargetPath(targetFlag)
+	currentVersion := readCurrentVersion(targetExe)
 
 	// If not in offline or local mode, and main app is not running, perform update check without confirmation
 	if !offlineFlag && localMode == "" && !isMainAppRunning() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		client := rest.NewClient(serverURL)
-		info, err := client.GetVersionInfo()
+		info, err := versioning.FetchVersionInfo(ctx)
 		if err != nil {
-			slog.Warn("Failed to check for updates on startup", "error", err)
-		} else if info != nil {
-			tag := versioning.FindBranchVersion(info, branch.String())
-			if tag != "" && shouldPerformUpdate(currentVersion, tag) {
-				slog.Info("Update available on startup, downloading and installing with /passive without confirmation", "target", tag, "current", currentVersion)
-				msiPath, err := versioning.DownloadUpdate(ctx, tag)
-				if err != nil {
-					slog.Error("Failed to download update", "error", err)
-				} else {
-					defer os.Remove(msiPath)
-					if err := versioning.RunMsiPassive(ctx, msiPath); err != nil {
-						slog.Error("Passive MSI installation failed", "error", err)
-					} else {
-						slog.Info("Passive MSI installation completed successfully")
-					}
+			slog.Error("Failed to check for updates on startup", "error", err)
+			ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新情報の確認に失敗しました。\nネットワーク接続を確認してください。\n\n詳細: %v", err))
+			os.Exit(1)
+		}
+
+		tag := versioning.FindBranchVersion(info, branch.String())
+		if tag != "" && shouldPerformUpdate(currentVersion, tag) {
+			slog.Info("Update available on startup, downloading and installing with /passive without confirmation", "target", tag, "current", currentVersion)
+
+			dlg := ShowProgressDialog("MODREPO アップデーター", fmt.Sprintf("バージョン %s をダウンロードしています...", tag))
+
+			msiPath, err := versioning.DownloadUpdateWithProgress(ctx, tag, func(downloaded, total int64) {
+				if total > 0 {
+					pct := int((downloaded * 100) / total)
+					status := fmt.Sprintf("バージョン %s をダウンロード中... (%s / %s)", tag, formatBytes(downloaded), formatBytes(total))
+					dlg.Update(status, pct)
 				}
+			})
+			if err != nil {
+				if dlg != nil {
+					dlg.Close()
+				}
+				slog.Error("Failed to download update", "error", err)
+				ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新ファイルのダウンロードに失敗しました。\n\n詳細: %v", err))
+				os.Exit(1)
 			}
+
+			dlg.Update("更新をインストールしています...", 100)
+			defer os.Remove(msiPath)
+			if err := versioning.RunMsiPassive(ctx, msiPath); err != nil {
+				if dlg != nil {
+					dlg.Close()
+				}
+				slog.Error("Passive MSI installation failed", "error", err)
+				ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新のインストールに失敗しました。\n\n詳細: %v", err))
+				os.Exit(1)
+			}
+			if dlg != nil {
+				dlg.Close()
+			}
+			slog.Info("Passive MSI installation completed successfully")
 		}
 	}
 
 	launchMainApp(targetFlag)
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func readPreferences() map[string]any {
@@ -153,12 +184,49 @@ func shouldPerformUpdate(currentVersion, targetVersion string) bool {
 	return semver.Compare(targetVersion, currentVersion) > 0
 }
 
-func readCurrentVersion() string {
+func readCurrentVersion(targetExe string) string {
 	info, ok := debug.ReadBuildInfo()
 	if ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		v := info.Main.Version
+		if !strings.HasPrefix(v, "v") {
+			v = "v" + v
+		}
+		if semver.IsValid(v) {
+			return v
+		}
 	}
+
+	if targetExe != "" {
+		if v := getFileVersion(targetExe); v != "" {
+			return v
+		}
+	}
+
 	return ""
+}
+
+func getFileVersion(filePath string) string {
+	size, err := windows.GetFileVersionInfoSize(filePath, nil)
+	if err != nil || size == 0 {
+		return ""
+	}
+	buf := make([]byte, size)
+	if err := windows.GetFileVersionInfo(filePath, 0, size, unsafe.Pointer(&buf[0])); err != nil {
+		return ""
+	}
+	var ffi *windows.VS_FIXEDFILEINFO
+	var ffiLen uint32
+	if err := windows.VerQueryValue(unsafe.Pointer(&buf[0]), `\`, unsafe.Pointer(&ffi), &ffiLen); err != nil || ffi == nil {
+		return ""
+	}
+	major := ffi.ProductVersionMS >> 16
+	minor := ffi.ProductVersionMS & 0xFFFF
+	patch := ffi.ProductVersionLS >> 16
+	build := ffi.ProductVersionLS & 0xFFFF
+	if build > 0 {
+		return fmt.Sprintf("v%d.%d.%d.%d", major, minor, patch, build)
+	}
+	return fmt.Sprintf("v%d.%d.%d", major, minor, patch)
 }
 
 func resolveTargetPath(targetFlag string) string {

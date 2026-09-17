@@ -16,68 +16,206 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/go-github/v91/github"
 	"golang.org/x/mod/semver"
+
+	restcommon "github.com/ikafly144/modrepo/common/rest"
 )
 
 var (
 	repoOwner    = "ikafly144"
 	repoName     = "modrepo"
 	artifactName = "modrepo_${OS}_${ARCH}.msi"
+
+	versionCacheMu    sync.Mutex
+	cachedVersionInfo *restcommon.VersionInfo
+	cacheExpiry       time.Time
 )
 
-func CheckForUpdates(ctx context.Context, branch Branch, currentVersion string) (releaseTag string, latestStable string, err error) {
-	var opts []github.ClientOptionsFunc
-	client, err := github.NewClient(opts...)
+const cacheTTL = 2 * time.Minute
+
+// FetchVersionInfo fetches release information from GitHub Releases, utilizing an in-memory cache
+// and falling back to redirect lookup if GitHub API rate limits or errors occur.
+func FetchVersionInfo(ctx context.Context) (*restcommon.VersionInfo, error) {
+	versionCacheMu.Lock()
+	if cachedVersionInfo != nil && time.Now().Before(cacheExpiry) {
+		info := cachedVersionInfo
+		versionCacheMu.Unlock()
+		return info, nil
+	}
+	versionCacheMu.Unlock()
+
+	info, err := fetchVersionInfoFromGitHub(ctx)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create GitHub client: %w", err)
-	}
-	opt := &github.ListOptions{
-		PerPage: 10,
-		Page:    1,
-	}
-outer:
-	for {
-		tags, resp, err := client.Repositories.ListTags(ctx, repoOwner, repoName, opt)
-		if err != nil {
-			return "", "", err
+		slog.Warn("Failed to fetch releases via GitHub API, attempting redirect fallback", "error", err)
+		fallbackInfo, fallbackErr := fetchLatestViaRedirect(ctx)
+		if fallbackErr == nil && fallbackInfo != nil {
+			versionCacheMu.Lock()
+			cachedVersionInfo = fallbackInfo
+			cacheExpiry = time.Now().Add(cacheTTL)
+			versionCacheMu.Unlock()
+			return fallbackInfo, nil
 		}
-		for _, tag := range tags {
-			slog.Info("found tag", "tag", tag.GetName())
-			if before, _, _ := strings.Cut(strings.TrimPrefix(semver.Prerelease(tag.GetName()), "-"), "."); before != "" && !branch.match(before) {
-				slog.Info("skipping tag due to prerelease branch mismatch", "tag", tag.GetName(), "branch", branch)
-			}
-			if semver.Compare(tag.GetName(), currentVersion) <= 0 {
-				slog.Info("no newer version found", "current", currentVersion, "found", tag.GetName())
-				return "", "", nil
-			}
-			if semver.Prerelease(tag.GetName()) != "" && semver.Compare(tag.GetName(), releaseTag) <= 0 {
-				slog.Info("already found a newer version, skipping", "current", currentVersion, "found", tag.GetName(), "existing", releaseTag)
-				continue
-			}
-			release, _, err := client.Repositories.GetReleaseByTag(ctx, repoOwner, repoName, tag.GetName())
-			if err != nil {
-				slog.Error("failed to get release by tag", "tag", tag.GetName(), "error", err)
-				continue
-			}
-			if release.GetTagName() != currentVersion && releaseTag == "" {
-				releaseTag = release.GetTagName()
-			}
-			if semver.Prerelease(release.GetTagName()) == "" && latestStable == "" {
-				latestStable = release.GetTagName()
-			}
-			if releaseTag != "" && latestStable != "" {
-				break outer
-			}
+		versionCacheMu.Lock()
+		if cachedVersionInfo != nil {
+			cached := cachedVersionInfo
+			versionCacheMu.Unlock()
+			slog.Warn("Using expired cached version info due to network error", "error", err)
+			return cached, nil
 		}
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
+		versionCacheMu.Unlock()
+		return nil, err
 	}
 
-	return releaseTag, latestStable, nil
+	versionCacheMu.Lock()
+	cachedVersionInfo = info
+	cacheExpiry = time.Now().Add(cacheTTL)
+	versionCacheMu.Unlock()
+
+	return info, nil
+}
+
+func fetchLatestViaRedirect(ctx context.Context) (*restcommon.VersionInfo, error) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 10 * time.Second,
+	}
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/latest", repoOwner, repoName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusMovedPermanently && resp.StatusCode != http.StatusSeeOther {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		return nil, errors.New("missing Location header in redirect")
+	}
+	tag := filepath.Base(loc)
+	if tag == "" || tag == "latest" {
+		return nil, fmt.Errorf("could not extract tag from location: %s", loc)
+	}
+	if !strings.HasPrefix(tag, "v") {
+		tag = "v" + tag
+	}
+
+	return &restcommon.VersionInfo{
+		Branches: []restcommon.BranchInfo{
+			{
+				Name:    BranchStable.String(),
+				Version: tag,
+				Title:   tag,
+			},
+		},
+	}, nil
+}
+
+func fetchVersionInfoFromGitHub(ctx context.Context) (*restcommon.VersionInfo, error) {
+	var opts []github.ClientOptionsFunc
+	ghClient, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
+	}
+
+	releases, _, err := ghClient.Repositories.ListReleases(ctx, repoOwner, repoName, &github.ListOptions{PerPage: 30})
+	if err != nil {
+		return nil, err
+	}
+
+	branchMap := make(map[Branch]restcommon.BranchInfo)
+
+	for _, rel := range releases {
+		if rel == nil || rel.GetDraft() {
+			continue
+		}
+		tag := rel.GetTagName()
+		if !semver.IsValid(tag) {
+			continue
+		}
+		prerelease := strings.TrimPrefix(semver.Prerelease(tag), "-")
+		before, _, _ := strings.Cut(prerelease, ".")
+
+		title := rel.GetName()
+		if title == "" {
+			title = tag
+		}
+		body := rel.GetBody()
+
+		for b := BranchStable; b <= BranchDev; b++ {
+			if !b.match(before) {
+				continue
+			}
+			cur, exists := branchMap[b]
+			if !exists || semver.Compare(tag, cur.Version) > 0 {
+				branchMap[b] = restcommon.BranchInfo{
+					Name:         b.String(),
+					Version:      tag,
+					Title:        title,
+					ReleaseNotes: body,
+				}
+			}
+		}
+	}
+
+	branches := make([]restcommon.BranchInfo, 0, len(branchMap))
+	for b := BranchStable; b <= BranchDev; b++ {
+		if info, ok := branchMap[b]; ok {
+			branches = append(branches, info)
+		}
+	}
+
+	return &restcommon.VersionInfo{Branches: branches}, nil
+}
+
+// CheckForUpdatesDetailed checks if an update is available for the given branch and returns the detailed branch info.
+func CheckForUpdatesDetailed(ctx context.Context, branch Branch, currentVersion string) (targetBranchInfo *restcommon.BranchInfo, latestStable *restcommon.BranchInfo, err error) {
+	info, err := FetchVersionInfo(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	target := FindBranchInfo(info, branch.String())
+	stable := FindBranchInfo(info, BranchStable.String())
+
+	var retTarget *restcommon.BranchInfo
+	if target != nil && (currentVersion == "" || semver.Compare(target.Version, currentVersion) > 0) {
+		retTarget = target
+	}
+
+	var retStable *restcommon.BranchInfo
+	if stable != nil && (currentVersion == "" || semver.Compare(stable.Version, currentVersion) > 0) {
+		retStable = stable
+	}
+
+	return retTarget, retStable, nil
+}
+
+func CheckForUpdates(ctx context.Context, branch Branch, currentVersion string) (releaseTag string, latestStable string, err error) {
+	target, stable, err := CheckForUpdatesDetailed(ctx, branch, currentVersion)
+	if err != nil {
+		return "", "", err
+	}
+	var tag, stab string
+	if target != nil {
+		tag = target.Version
+	}
+	if stable != nil {
+		stab = stable.Version
+	}
+	return tag, stab, nil
 }
 
 // ProgressCallback is called during download with bytes downloaded and total size in bytes.
@@ -103,85 +241,87 @@ func DownloadUpdate(ctx context.Context, tag string) (string, error) {
 }
 
 func DownloadUpdateWithProgress(ctx context.Context, tag string, onProgress ProgressCallback) (string, error) {
-	var opts []github.ClientOptionsFunc
-	client, err := github.NewClient(opts...)
-	if err != nil {
-		return "", fmt.Errorf("failed to create GitHub client: %w", err)
-	}
-	release, _, err := client.Repositories.GetReleaseByTag(ctx, repoOwner, repoName, tag)
-	if err != nil {
-		return "", err
-	}
-
 	assetName := replaceOSAndArch(artifactName)
+
+	var downloadURL string
+	var checksumsURL string
+
+	// 1. Try to get asset URLs from GitHub Releases API
+	var opts []github.ClientOptionsFunc
+	ghClient, err := github.NewClient(opts...)
+	if err == nil {
+		release, _, relErr := ghClient.Repositories.GetReleaseByTag(ctx, repoOwner, repoName, tag)
+		if relErr == nil && release != nil {
+			for _, asset := range release.Assets {
+				if asset.GetName() == assetName {
+					downloadURL = asset.GetBrowserDownloadURL()
+				} else if asset.GetName() == "checksums.txt" {
+					checksumsURL = asset.GetBrowserDownloadURL()
+				}
+			}
+		}
+	}
+
+	// 2. Fallback to direct release download URLs if API didn't resolve them
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", repoOwner, repoName, tag, assetName)
+	}
+	if checksumsURL == "" {
+		checksumsURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/checksums.txt", repoOwner, repoName, tag)
+	}
+
+	// 3. Download checksums.txt
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checksumsURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request for checksums.txt: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to download checksums.txt: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download checksums.txt: status code %d", resp.StatusCode)
+	}
+
+	buf := new(strings.Builder)
+	if _, err := io.Copy(buf, resp.Body); err != nil {
+		return "", fmt.Errorf("failed to read checksums.txt: %w", err)
+	}
+
 	var checkSum []byte
-	var binaryAsset *github.ReleaseAsset
-
-	for _, asset := range release.Assets {
-		if asset.GetName() == assetName {
-			binaryAsset = asset
-			continue
-		}
-		if asset.GetName() == "checksums.txt" {
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.GetBrowserDownloadURL(), nil)
+	lines := strings.Split(buf.String(), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && parts[1] == assetName {
+			checkSum, err = hex.DecodeString(parts[0])
 			if err != nil {
-				return "", fmt.Errorf("failed to create request for checksums.txt: %w", err)
+				return "", fmt.Errorf("invalid checksum hex: %w", err)
 			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return "", fmt.Errorf("failed to download checksums.txt: %w", err)
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return "", fmt.Errorf("failed to download checksums.txt: status code %d", resp.StatusCode)
-			}
-			buf := new(strings.Builder)
-
-			var sha256Hash [32]byte
-			if hashStr, ok := strings.CutPrefix(asset.GetDigest(), "sha256:"); ok {
-				if _, err := hex.Decode(sha256Hash[:], []byte(hashStr)); err != nil {
-					return "", fmt.Errorf("failed to decode checksum: %w", err)
-				}
-			}
-			hasher := sha256.New()
-			writer := io.MultiWriter(buf, hasher)
-			if _, err = io.Copy(writer, resp.Body); err != nil {
-				return "", err
-			}
-			if !bytes.Equal(sha256Hash[:], hasher.Sum(nil)) {
-				return "", errors.New("checksum verification failed for checksums.txt")
-			}
-			lines := strings.SplitSeq(buf.String(), "\n")
-			for line := range lines {
-				parts := strings.Fields(line)
-				if len(parts) == 2 && parts[1] == assetName {
-					checkSum, err = hex.DecodeString(parts[0])
-					if err != nil {
-						return "", err
-					}
-					break
-				}
-			}
+			break
 		}
 	}
-	if binaryAsset == nil {
-		return "", errors.New("no suitable asset found for update")
-	}
+
 	if len(checkSum) == 0 {
 		return "", errors.New("checksum for MSI not found in checksums.txt")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, binaryAsset.GetBrowserDownloadURL(), nil)
+
+	// 4. Download MSI
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to download MSI: status code %d", resp.StatusCode)
 	}
+
 	hasher := sha256.New()
 	tempFile, err := os.CreateTemp("", "modrepo-*.msi")
 	if err != nil {
@@ -190,9 +330,6 @@ func DownloadUpdateWithProgress(ctx context.Context, tag string, onProgress Prog
 	defer tempFile.Close()
 
 	total := resp.ContentLength
-	if total <= 0 && binaryAsset.GetSize() > 0 {
-		total = int64(binaryAsset.GetSize())
-	}
 	if onProgress != nil {
 		onProgress(0, total)
 	}
@@ -205,9 +342,11 @@ func DownloadUpdateWithProgress(ctx context.Context, tag string, onProgress Prog
 	if _, err := io.Copy(tempFile, reader); err != nil {
 		return "", err
 	}
+
 	if !bytes.Equal(checkSum, hasher.Sum(nil)) {
 		return "", errors.New("checksum verification failed for downloaded MSI")
 	}
+
 	if err := tempFile.Close(); err != nil {
 		return "", err
 	}

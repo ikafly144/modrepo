@@ -33,13 +33,22 @@ func LatestVersionsFromTags(tags []string) map[Branch]string {
 
 // FindBranchVersion searches VersionInfo for the specified branch name.
 func FindBranchVersion(info *restcommon.VersionInfo, branch string) string {
-	if info == nil {
-		return ""
-	}
-	for _, b := range info.Branches {
-		if strings.EqualFold(b.Name, branch) {
-			return b.Version
-		}
+	b := FindBranchInfo(info, branch)
+	if b != nil {
+		return b.Version
 	}
 	return ""
+}
+
+// FindBranchInfo searches VersionInfo for the specified branch name and returns the BranchInfo.
+func FindBranchInfo(info *restcommon.VersionInfo, branch string) *restcommon.BranchInfo {
+	if info == nil {
+		return nil
+	}
+	for i := range info.Branches {
+		if strings.EqualFold(info.Branches[i].Name, branch) {
+			return &info.Branches[i]
+		}
+	}
+	return nil
 }

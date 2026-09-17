@@ -26,11 +26,11 @@ func FindBranchVersion(info *restcommon.VersionInfo, branch string) string {
 	return versioning.FindBranchVersion(info, branch)
 }
 
-// CheckAvailableUpdate queries the server to check if an update is available for the current branch and version.
-// It returns the target branch release tag (empty if up to date), whether the update is mandatory, and any error.
-func (s *State) CheckAvailableUpdate() (tag string, isMandatory bool, err error) {
+// CheckAvailableUpdateDetailed queries the server to check if an update is available for the current branch and version.
+// It returns the target branch BranchInfo (nil if up to date), whether the update is mandatory, and any error.
+func (s *State) CheckAvailableUpdateDetailed() (branchInfo *restcommon.BranchInfo, isMandatory bool, err error) {
 	if s.Rest == nil {
-		return "", false, errors.New("cannot check for updates in offline mode")
+		return nil, false, errors.New("cannot check for updates in offline mode")
 	}
 
 	branchName := "stable"
@@ -41,16 +41,31 @@ func (s *State) CheckAvailableUpdate() (tag string, isMandatory bool, err error)
 
 	info, err := s.Rest.GetVersionInfo()
 	if err != nil {
-		return "", false, err
+		return nil, false, err
 	}
 
-	branchTag := FindBranchVersion(info, branch.String())
-	stableTag := FindBranchVersion(info, versioning.BranchStable.String())
-	if branchTag != "" && semver.Compare(branchTag, s.Version) > 0 {
-		tag = branchTag
-		isMandatory = s.Version != "(devel)" && semver.Prerelease(tag) == "" && semver.Build(tag) == "" && stableTag != "" && semver.Compare(stableTag, s.Version) > 0
+	targetBranch := versioning.FindBranchInfo(info, branch.String())
+	stableBranch := versioning.FindBranchInfo(info, versioning.BranchStable.String())
+	if targetBranch != nil && targetBranch.Version != "" && semver.Compare(targetBranch.Version, s.Version) > 0 {
+		tag := targetBranch.Version
+		isMandatory = s.Version != "(devel)" && semver.Prerelease(tag) == "" && semver.Build(tag) == "" &&
+			stableBranch != nil && stableBranch.Version != "" && semver.Compare(stableBranch.Version, s.Version) > 0
+		return targetBranch, isMandatory, nil
 	}
-	return tag, isMandatory, nil
+	return nil, false, nil
+}
+
+// CheckAvailableUpdate queries the server to check if an update is available for the current branch and version.
+// It returns the target branch release tag (empty if up to date), whether the update is mandatory, and any error.
+func (s *State) CheckAvailableUpdate() (tag string, isMandatory bool, err error) {
+	info, mandatory, err := s.CheckAvailableUpdateDetailed()
+	if err != nil {
+		return "", false, err
+	}
+	if info != nil {
+		return info.Version, mandatory, nil
+	}
+	return "", false, nil
 }
 
 func (s *State) CheckForUpdates(ctx context.Context, interactive bool) {
@@ -61,7 +76,7 @@ func (s *State) CheckForUpdates(ctx context.Context, interactive bool) {
 		return
 	}
 
-	tag, isMandatory, err := s.CheckAvailableUpdate()
+	branchInfo, isMandatory, err := s.CheckAvailableUpdateDetailed()
 	if err != nil {
 		slog.Error("Failed to check for updates via server", "error", err)
 		if interactive {
@@ -70,9 +85,9 @@ func (s *State) CheckForUpdates(ctx context.Context, interactive bool) {
 		return
 	}
 
-	if tag != "" {
-		slog.Info("Update available", "version", tag, "current", s.Version)
-		s.ShowUpdateDialog(tag, isMandatory)
+	if branchInfo != nil && branchInfo.Version != "" {
+		slog.Info("Update available", "version", branchInfo.Version, "current", s.Version)
+		s.ShowUpdateDialogDetailed(branchInfo, isMandatory)
 	} else {
 		slog.Info("No updates available", "current", s.Version)
 		if interactive {
@@ -85,7 +100,14 @@ func (s *State) CheckForUpdates(ctx context.Context, interactive bool) {
 }
 
 func (s *State) ShowUpdateDialog(tag string, isMandatory bool) {
-	if s.Window == nil {
+	s.ShowUpdateDialogDetailed(&restcommon.BranchInfo{
+		Version: tag,
+		Title:   tag,
+	}, isMandatory)
+}
+
+func (s *State) ShowUpdateDialogDetailed(branchInfo *restcommon.BranchInfo, isMandatory bool) {
+	if s.Window == nil || branchInfo == nil || branchInfo.Version == "" {
 		return
 	}
 
@@ -97,22 +119,45 @@ func (s *State) ShowUpdateDialog(tag string, isMandatory bool) {
 		}
 		s.dialogLock.Unlock()
 
-		confirmMsg := lang.LocalizeKey("update.available", "New version \"{{.Version}}\" is available. Do you want to update now?", map[string]any{"Version": tag})
+		confirmMsg := lang.LocalizeKey("update.available", "New version \"{{.Version}}\" is available. Do you want to update now?", map[string]any{"Version": branchInfo.Version})
+		msgLabel := widget.NewLabel(confirmMsg)
+		msgLabel.Wrapping = fyne.TextWrapWord
 
-		confirmDialog := dialog.NewConfirm(
+		var content fyne.CanvasObject
+		if branchInfo.ReleaseNotes != "" {
+			notesLabel := widget.NewLabelWithStyle(lang.LocalizeKey("update.release_notes", "Release Notes:"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+			richText := widget.NewRichTextFromMarkdown(branchInfo.ReleaseNotes)
+			richText.Wrapping = fyne.TextWrapWord
+			scroll := container.NewVScroll(richText)
+			scroll.SetMinSize(fyne.NewSize(450, 200))
+
+			content = container.NewVBox(
+				msgLabel,
+				widget.NewSeparator(),
+				notesLabel,
+				scroll,
+			)
+		} else {
+			content = msgLabel
+		}
+
+		confirmDialog := dialog.NewCustomConfirm(
 			lang.LocalizeKey("update.title", "Update Available"),
-			confirmMsg,
+			lang.LocalizeKey("update.now", "Update Now"),
+			lang.LocalizeKey("update.later", "Later"),
+			content,
 			func(yes bool) {
 				if yes {
-					s.PerformUpdate(tag)
+					s.PerformUpdate(branchInfo.Version)
 				} else if isMandatory {
 					s.showMandatoryUpdateRequiredDialog()
 				}
 			},
 			s.Window,
 		)
-		confirmDialog.SetDismissText(lang.LocalizeKey("update.later", "Later"))
-		confirmDialog.SetConfirmText(lang.LocalizeKey("update.now", "Update Now"))
+		if branchInfo.ReleaseNotes != "" {
+			confirmDialog.Resize(fyne.NewSize(500, 360))
+		}
 
 		var d dialog.Dialog = confirmDialog
 

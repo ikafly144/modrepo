@@ -17,8 +17,10 @@ type VersionInfo struct {
 }
 
 type BranchInfo struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name         string `json:"name"`
+	Version      string `json:"version"`
+	Title        string `json:"title,omitempty"`
+	ReleaseNotes string `json:"release_notes,omitempty"`
 }
 
 type RoomInfo struct {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ikafly144/modrepo/common/rest"
 	"github.com/ikafly144/modrepo/common/rest/model"
+	"github.com/ikafly144/modrepo/common/versioning"
 	"github.com/ikafly144/modrepo/pkg/modmgr"
 	"github.com/ikafly144/modrepo/pkg/thunderstore"
 )
@@ -34,9 +35,7 @@ func (c *ThunderstoreClient) GetHealthStatus() (*rest.HealthStatus, error) {
 }
 
 func (c *ThunderstoreClient) GetVersionInfo() (*rest.VersionInfo, error) {
-	return &rest.VersionInfo{
-		Branches: []rest.BranchInfo{{Name: "main", Version: "1.0.0"}},
-	}, nil
+	return versioning.FetchVersionInfo(context.Background())
 }
 
 func (c *ThunderstoreClient) RefreshPackages(ctx context.Context) error {
