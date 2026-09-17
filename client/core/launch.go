@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"uuid"
 
+	"github.com/ikafly144/modrepo/common/rest/model"
 	"github.com/ikafly144/modrepo/pkg/modmgr"
 	"github.com/ikafly144/modrepo/pkg/progress"
 	"github.com/ikafly144/modrepo/pkg/repomgr"
@@ -24,7 +26,23 @@ func (a *App) ResolveProfileDependencies(profileID uuid.UUID) ([]modmgr.ModVersi
 }
 
 func (a *App) ResolveDependencies(initialMods []modmgr.ModVersion) ([]modmgr.ModVersion, error) {
-	resolvedMap, err := modmgr.ResolveDependencies(initialMods, a.Rest)
+	normalizedMods := make([]modmgr.ModVersion, len(initialMods))
+	for i, m := range initialMods {
+		normalizedMods[i] = m
+		if len(m.Dependencies) > 0 {
+			normalizedDeps := make([]model.ModVersionDependency, len(m.Dependencies))
+			for j, d := range m.Dependencies {
+				normalizedDeps[j] = d
+				v := strings.TrimSpace(d.VersionID)
+				if v != "" && !strings.ContainsAny(v, "<>!=~*xX,^@") && !strings.EqualFold(v, "latest") && !strings.EqualFold(v, "any") {
+					normalizedDeps[j].VersionID = ">=" + v
+				}
+			}
+			normalizedMods[i].Dependencies = normalizedDeps
+		}
+	}
+
+	resolvedMap, err := modmgr.ResolveDependencies(normalizedMods, a.Rest)
 	if err != nil {
 		return nil, err
 	}

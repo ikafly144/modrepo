@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ikafly144/modrepo/common/rest"
 	"github.com/ikafly144/modrepo/common/rest/model"
@@ -148,6 +149,10 @@ func packageVersionToModVersion(v *thunderstore.PackageVersion, modID string) *m
 	deps := make([]model.ModVersionDependency, 0, len(v.Dependencies))
 	for _, depStr := range v.Dependencies {
 		dModID, dVer := thunderstore.ParseDependency(depStr)
+		v := strings.TrimSpace(dVer)
+		if v != "" && !strings.ContainsAny(v, "<>!=~*xX,^@") && !strings.EqualFold(v, "latest") && !strings.EqualFold(v, "any") {
+			dVer = ">=" + v
+		}
 		deps = append(deps, model.ModVersionDependency{
 			ModID:          dModID,
 			VersionID:      dVer,
