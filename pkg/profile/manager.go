@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"uuid"
 )
@@ -182,24 +181,6 @@ func (m *Manager) LoadIconPNG(id uuid.UUID) ([]byte, error) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read profile icon: %w", err)
-	}
-
-	// Check if this icon.png was installed as a mod file (e.g. from BepInExPack bug)
-	metaPath := filepath.Join(m.profileDir(id), "profile_meta.json")
-	if metaBytes, err := os.ReadFile(metaPath); err == nil {
-		var meta struct {
-			ModFiles []string `json:"mod_files"`
-		}
-		if json.Unmarshal(metaBytes, &meta) == nil {
-			for _, file := range meta.ModFiles {
-				if strings.EqualFold(file, "icon.png") {
-					// This icon.png was created by mod installation, not by the user.
-					// Clean it up and treat as no icon.
-					_ = os.Remove(iconPath)
-					return nil, nil
-				}
-			}
-		}
 	}
 
 	return data, nil
