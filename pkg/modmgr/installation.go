@@ -195,6 +195,10 @@ func extractThunderstoreZip(reader io.ReaderAt, contentLength int64, modID strin
 			if strings.HasPrefix(strings.ToLower(trimmed), "bepinexpack/") {
 				trimmed = trimmed[len("bepinexpack/"):]
 			}
+			lowerTrimmed := strings.ToLower(trimmed)
+			if lowerTrimmed == "icon.png" || lowerTrimmed == "manifest.json" || lowerTrimmed == "readme.md" || lowerTrimmed == "changelog.md" {
+				continue
+			}
 			destPath = filepath.FromSlash(trimmed)
 		} else {
 			lower := strings.ToLower(normalized)

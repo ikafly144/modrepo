@@ -2,6 +2,7 @@ package profile
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -101,6 +102,35 @@ func TestProfileManager_IconFileCRUD(t *testing.T) {
 	loaded, err = manager.LoadIconPNG(id)
 	require.NoError(t, err)
 	assert.Nil(t, loaded)
+}
+
+func TestProfileManager_LoadIconPNG_CleansModFilesIcon(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "profile_icon_clean_test_*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	manager, err := NewManager(tempDir)
+	require.NoError(t, err)
+
+	id := uuid.New()
+	pDir := filepath.Join(tempDir, "profiles", id.String())
+	require.NoError(t, os.MkdirAll(pDir, 0755))
+
+	iconPath := filepath.Join(pDir, "icon.png")
+	require.NoError(t, os.WriteFile(iconPath, []byte("fake-bepinex-icon"), 0644))
+
+	// Write profile_meta.json listing "icon.png" in mod_files
+	metaContent := `{"mod_files":["winhttp.dll","icon.png","manifest.json"]}`
+	require.NoError(t, os.WriteFile(filepath.Join(pDir, "profile_meta.json"), []byte(metaContent), 0644))
+
+	// LoadIconPNG should detect that icon.png is a mod file, clean it up, and return nil
+	loaded, err := manager.LoadIconPNG(id)
+	require.NoError(t, err)
+	assert.Nil(t, loaded)
+
+	// Verify the file was removed
+	_, err = os.Stat(iconPath)
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestProfile_MatchesShared(t *testing.T) {
