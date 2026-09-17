@@ -291,8 +291,8 @@ func DownloadUpdateWithProgress(ctx context.Context, tag string, onProgress Prog
 	}
 
 	var checkSum []byte
-	lines := strings.Split(buf.String(), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(buf.String(), "\n")
+	for line := range lines {
 		parts := strings.Fields(line)
 		if len(parts) == 2 && parts[1] == assetName {
 			checkSum, err = hex.DecodeString(parts[0])

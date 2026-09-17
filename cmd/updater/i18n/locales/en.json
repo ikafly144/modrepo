@@ -1,0 +1,10 @@
+{
+  "updater.title": "MODREPO Updater",
+  "updater.status.updating": "Updating MODREPO to the latest version...",
+  "updater.status.downloading_start": "Downloading version {{.Version}}...",
+  "updater.status.downloading_progress": "Downloading version {{.Version}}... ({{.Downloaded}} / {{.Total}})",
+  "updater.status.installing": "Installing update...",
+  "updater.error.check_failed": "Failed to check for updates.\nPlease check your network connection.\n\nDetails: {{.Error}}",
+  "updater.error.download_failed": "Failed to download update file.\n\nDetails: {{.Error}}",
+  "updater.error.install_failed": "Failed to install update.\n\nDetails: {{.Error}}"
+}

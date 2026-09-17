@@ -1,0 +1,10 @@
+{
+  "updater.title": "MODREPO アップデーター",
+  "updater.status.updating": "MODREPO を最新バージョンに更新しています...",
+  "updater.status.downloading_start": "バージョン {{.Version}} をダウンロードしています...",
+  "updater.status.downloading_progress": "バージョン {{.Version}} をダウンロード中... ({{.Downloaded}} / {{.Total}})",
+  "updater.status.installing": "更新をインストールしています...",
+  "updater.error.check_failed": "更新情報の確認に失敗しました。\nネットワーク接続を確認してください。\n\n詳細: {{.Error}}",
+  "updater.error.download_failed": "更新ファイルのダウンロードに失敗しました。\n\n詳細: {{.Error}}",
+  "updater.error.install_failed": "更新のインストールに失敗しました。\n\n詳細: {{.Error}}"
+}

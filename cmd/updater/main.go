@@ -22,6 +22,7 @@ import (
 
 	"github.com/nightlyone/lockfile"
 
+	"github.com/ikafly144/modrepo/cmd/updater/i18n"
 	"github.com/ikafly144/modrepo/common/versioning"
 )
 
@@ -50,6 +51,7 @@ func main() {
 		silentFlag  bool
 		targetFlag  string
 		fromTemp    bool
+		langFlag    string
 	)
 	flag.StringVar(&serverFlag, "server", "", "URL of the mod server")
 	flag.StringVar(&localMode, "local", "", "Path to local mods.json file for local mode")
@@ -57,7 +59,10 @@ func main() {
 	flag.BoolVar(&silentFlag, "silent", false, "Start minimized in system tray")
 	flag.StringVar(&targetFlag, "target", "", "Path to target executable to launch after update")
 	flag.BoolVar(&fromTemp, "from-temp", false, "Internal flag indicating updater is running from temp directory")
+	flag.StringVar(&langFlag, "lang", "", "Language code (e.g. en, ja)")
 	flag.Parse()
+
+	i18n.Init(langFlag, readLanguagePreference())
 
 	// If the main application is already running, skip update check and directly forward to main app
 	if isMainAppRunning() {
@@ -84,7 +89,7 @@ func main() {
 		info, err := versioning.FetchVersionInfo(ctx)
 		if err != nil {
 			slog.Error("Failed to check for updates on startup", "error", err)
-			ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新情報の確認に失敗しました。\nネットワーク接続を確認してください。\n\n詳細: %v", err))
+			ShowErrorDialog(i18n.T("updater.title"), i18n.T("updater.error.check_failed", map[string]any{"Error": err}))
 			os.Exit(1)
 		}
 
@@ -92,12 +97,16 @@ func main() {
 		if tag != "" && shouldPerformUpdate(currentVersion, tag) {
 			slog.Info("Update available on startup, downloading and installing with /passive without confirmation", "target", tag, "current", currentVersion)
 
-			dlg := ShowProgressDialog("MODREPO アップデーター", fmt.Sprintf("バージョン %s をダウンロードしています...", tag))
+			dlg := ShowProgressDialog(i18n.T("updater.title"), i18n.T("updater.status.downloading_start", map[string]any{"Version": tag}))
 
 			msiPath, err := versioning.DownloadUpdateWithProgress(ctx, tag, func(downloaded, total int64) {
 				if total > 0 {
 					pct := int((downloaded * 100) / total)
-					status := fmt.Sprintf("バージョン %s をダウンロード中... (%s / %s)", tag, formatBytes(downloaded), formatBytes(total))
+					status := i18n.T("updater.status.downloading_progress", map[string]any{
+						"Version":    tag,
+						"Downloaded": formatBytes(downloaded),
+						"Total":      formatBytes(total),
+					})
 					dlg.Update(status, pct)
 				}
 			})
@@ -106,18 +115,18 @@ func main() {
 					dlg.Close()
 				}
 				slog.Error("Failed to download update", "error", err)
-				ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新ファイルのダウンロードに失敗しました。\n\n詳細: %v", err))
+				ShowErrorDialog(i18n.T("updater.title"), i18n.T("updater.error.download_failed", map[string]any{"Error": err}))
 				os.Exit(1)
 			}
 
-			dlg.Update("更新をインストールしています...", 100)
+			dlg.Update(i18n.T("updater.status.installing"), 100)
 			defer os.Remove(msiPath)
 			if err := versioning.RunMsiPassive(ctx, msiPath); err != nil {
 				if dlg != nil {
 					dlg.Close()
 				}
 				slog.Error("Passive MSI installation failed", "error", err)
-				ShowErrorDialog("MODREPO アップデーター", fmt.Sprintf("更新のインストールに失敗しました。\n\n詳細: %v", err))
+				ShowErrorDialog(i18n.T("updater.title"), i18n.T("updater.error.install_failed", map[string]any{"Error": err}))
 				os.Exit(1)
 			}
 			if dlg != nil {
@@ -172,6 +181,16 @@ func readUpdateBranchPreference() string {
 		}
 	}
 	return "stable"
+}
+
+func readLanguagePreference() string {
+	prefs := readPreferences()
+	if prefs != nil {
+		if val, ok := prefs["core.language"].(string); ok && val != "" {
+			return val
+		}
+	}
+	return ""
 }
 
 func shouldPerformUpdate(currentVersion, targetVersion string) bool {
@@ -334,6 +353,15 @@ func buildLaunchArgs(args []string) []string {
 			continue
 		}
 		if arg == "-from-temp" || arg == "--from-temp" {
+			continue
+		}
+		if arg == "-lang" || arg == "--lang" {
+			if i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-lang=") || strings.HasPrefix(arg, "--lang=") {
 			continue
 		}
 		if arg == "-initial" || arg == "--initial" {

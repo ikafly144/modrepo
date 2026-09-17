@@ -29,6 +29,14 @@ func TestBuildLaunchArgs(t *testing.T) {
 	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"--target", "C:\\MODREPO.exe", "-silent"}))
 	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"-from-temp", "-target", "MODREPO.exe", "-silent"}))
 	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"-silent", "-initial"}))
+	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"-lang", "ja", "-silent"}))
+	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"--lang", "en", "-silent"}))
+	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"-lang=ja", "-silent"}))
+	assert.Equal(t, []string{"-silent", "-initial"}, buildLaunchArgs([]string{"--lang=en", "-silent"}))
+}
+
+func TestReadLanguagePreference(t *testing.T) {
+	_ = readLanguagePreference()
 }
 
 func TestResolveTargetPath(t *testing.T) {

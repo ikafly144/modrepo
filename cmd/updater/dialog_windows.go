@@ -10,6 +10,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/ikafly144/modrepo/cmd/updater/i18n"
 )
 
 var (
@@ -167,7 +169,7 @@ func ShowProgressDialog(title, initialStatus string) *NativeProgressDialog {
 		staticClass, _ := windows.UTF16PtrFromString("STATIC")
 		progressClass, _ := windows.UTF16PtrFromString("msctls_progress32")
 
-		titleText, _ := windows.UTF16PtrFromString("MODREPO を最新バージョンに更新しています...")
+		titleText, _ := windows.UTF16PtrFromString(i18n.T("updater.status.updating"))
 		hTitle, _, _ := procCreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(staticClass)), uintptr(unsafe.Pointer(titleText)),
 			WS_CHILD|WS_VISIBLE,
